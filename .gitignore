@@ -1,0 +1,6 @@
+# ROMs and save files are never part of the repository.
+*.sfc
+*.smc
+*.srm
+*.mss
+__pycache__/
