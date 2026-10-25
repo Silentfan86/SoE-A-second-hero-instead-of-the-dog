@@ -56,9 +56,7 @@ While player 2 is in the game, enemies and bosses take only 2/3 of the damage, s
 This is a beta. Please report anything unusual, ideally with the location, what both players were doing, and a screenshot.
 
 - NPCs talk to the second hero as if he were the Dog ("pup"), because he occupies the Dog's place.
-- On the game-over screen the second hero appears as the Dog.
 - Cutscenes involving the Dog have not been tested in hero mode. If something gets stuck, switch to the Dog with **Y**.
-- On map changes, the Dog's form can be visible for a single frame.
 - Bazooka ammunition type is shared: if player 1 selects different ammunition, player 2 fires that too.
 
 ## Installing
@@ -70,7 +68,7 @@ The add-on patch contains **only the SoE_A-second-hero-instead-of-the-dog change
 3. Apply the add-on patch [SoE_A-second-hero-instead-of-the-dog_beta1.ips](SoE_A-second-hero-instead-of-the-dog_beta1.ips) to that Casual Run 2.0 ROM.
 4. Open the patched ROM in your SNES emulator and connect two controllers.
 
-The result is 4,194,304 bytes with CRC32 `AF12890A` and SHA-256 `82bea9f123ba0288720ec8eac8bf09512250c00a8bbccbec839e1367a610899c`.
+The result is 4,194,304 bytes with CRC32 `A2E016C9` and SHA-256 `90e71b9ce36001b22172dc5cd897b7d6b182559d0d96d92b63e829fdd2ffb00d`.
 
 **Note on the Casual Run 2.0 ROM.** Depending on the patcher, the official 2.0 IPS produces one of two ROMs that differ only in length:
 

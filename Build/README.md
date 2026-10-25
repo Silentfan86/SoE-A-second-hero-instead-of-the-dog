@@ -12,7 +12,7 @@ python3 Build/make_addon.py "<Casual Run 2.0 ROM>" <output folder> --asar <asar 
 ```
 Applies the three asar files to a Casual Run 2.0 ROM (4 MiB, or the 800 bytes shorter variant produced by
 Floating IPS) and creates the ROM and the add-on IPS, which contains only the SoE_A-second-hero-instead-of-the-dog changes. The resulting ROM
-has SHA-256 `82bea9f123ba0288720ec8eac8bf09512250c00a8bbccbec839e1367a610899c`.
+has SHA-256 `90e71b9ce36001b22172dc5cd897b7d6b182559d0d96d92b63e829fdd2ffb00d`.
 
 The `.asm` files in `Build/` are the source.
 
@@ -37,7 +37,7 @@ The `.asm` files in `Build/` are the source.
 | Gourds and chests | hook `$F00580` → `HeroActor` | Gourd/chest scripts check "acting character == Boy" (script `$0771`: expression `50 29 52 22`; `$52` = FuSoYa operand "acting character" `$EA`/`$0F42`). In hero mode the operand returns the Boy for the Dog slot; `$EC` (controller assignment for dialogue input) stays the real character. Loot goes to the shared inventory. As the Dog (Y) unchanged |
 | Dialogues | hooks `$F00965` → `HeroDlgKey`, `$F0072D` → `HeroUnfreezeActor`; `HeroSync` | In hero mode, dialogue pages advance only on newly pressed controller-2 buttons, and the confirm/cancel bits in `$FA` are consumed (before, held buttons skipped pages and the hero talked to the NPC again 2–3 times). "Release character" treats the hero in the Dog slot as the Boy, like "halt character" (`$F00580`); otherwise the Boy stayed frozen after the hero's conversation. While a dialogue is open (`$4E99` bit 5), P2's action buttons are masked |
 | Knock-out | hook `$90CE05` → `HeroPalRestore`; `HeroDeadPose` in `HeroSync` | After the collapse the game reloads the Dog's palette into slot 7 (`$90CDDC`); in hero mode this is skipped, so the hero falls in his own colors (his collapse is the Boy's, record `+$46`). The first `HeroSync` call after the collapse still sees its last frame: it is stored (`$307F26/28`) and held (frame timer `+$05` = `$7F`) while HP = 0, P2's input is ignored. Without this the hero stood up again and, after any Ring, showed the Dog's lying pose |
-| Script poses (inn) | hooks `$CFCC1E` → `HeroScriptPose`, `$908421` → `HeroFrameSet` | While a script plays a Dog animation on the hero (object `+$10` bit `$40`, frame not in bank `$CA`, e.g. sleeping at an inn), the hero shows the Boy's current frame (`+$06..+$08`): the think prolog copies it every frame, and the frame opcode `$2n` stores it instead of the Dog's frame. The Boy's script state is not copied |
+| Script poses (inn, game over) and map changes | hooks `$CFCC1E` → `HeroScriptPose`, `$908421` → `HeroFrameSet`, `HeroDogFrame`, `HeroPalKeep` | The hero shows the Boy's current frame (`+$06..+$08`) instead of a Dog frame: a) while a script runs the Dog slot (object `+$10` bit `$40`) and the frame is not in bank `$CA`, e.g. sleeping at an inn or lying on the game-over screen; b) without a script, for Dog frames (bank `$CB`) while the hero is alive, e.g. the walk-in after a map change. The think prolog copies it every frame, and the frame opcode `$2n` stores it instead of the Dog's frame. The Boy's script state is not copied. During a map change the Dog slot is halted (`+$10` bit `$20`), `HeroSync` does not run, and the map loader restores the Dog's animations and palette; therefore the prolog also keeps the hero palette (`HeroPalKeep`, same conditions as `HeroSync`). Measured: hero palette in place two frames before the screen becomes visible |
 | Hero/Dog | `HeroToggleInput`, `HeroSync` | **Y** on controller 2 switches between hero and Dog ("P2: Dog" or "P2: <weapon>"). If the Boy is absent (`$2261` bit 1; native: Boy HUD off at `$CFC648`), hero mode pauses automatically and P2 controls the Dog; afterwards the hero returns. As the Dog, L/R work natively (sniffing) and X opens no Ring. The toggle is reset when P2 leaves |
 | `HeroSniffGate` | hook `$CFCFA2` | In hero mode, no L/R special path of the Dog controls |
 
@@ -66,14 +66,14 @@ loading (test: save at Strong Heart, change the live value, reset, load the slot
 1. **Stats:** attack and charge as above; HP, defense, evasion, level, and character experience remain the Dog
    slot's. Charge rate `+$2E` is fixed at `$000A` for both.
 2. **Delayed return:** `HeroSync` runs in the think dispatch; during hit animations it is not called (measured up to
-   ~90 frames). On map changes, the Dog's form is visible for one frame.
+   ~90 frames). The look (frames, palette) is kept by the think prolog meanwhile (see table).
 3. **Dog-specific places:** automatic only where the game marks the Boy as absent (`$2261` bit 1).
    [Hypothesis] The Dog mazes and the Pyramid set this bit; not verified without a matching save file. Fallback: Y
    (controller 2). Tested in the emulator: switching and the pause with the bit set, not an actual sniff spot.
 4. **Bazooka:** the ammunition type is shared (one variable `$2349`). If P1 selects different ammunition, P2 fires it too.
 5. **Idle animations:** movement and idle animations still run through the Dog controls; the Boy's idle
    in-between animations (`$1460–$1466`) do not exist for the hero.
-8. **Knock-out edge cases:** switching to the Dog (Y) while the hero is knocked out shows the hero's lying frame in Dog colors for about two seconds before the Dog's lying pose; on the game-over screen the second hero appears as the lying Dog.
+8. **Knock-out edge case:** switching to the Dog (Y) while the hero is knocked out shows the hero's lying frame in Dog colors for about two seconds before the Dog's lying pose.
 
 Earlier assumption "attack only with a target" – **disproved** (emulator test): without an enemy, the hero
 swings into empty air like the Boy (swing script `$C7146x`, `+$12 = $0800`). Button presses during a running swing

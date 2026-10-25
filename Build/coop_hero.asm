@@ -55,6 +55,7 @@ hirom
 !DLGNEW     = $307F24
 !DEADPTR    = $307F26	; KO: last frame of the hero's collapse animation (address)
 !DEADBANK   = $307F28	; KO: its bank (0 = not captured yet)
+!TMP_FRM    = $307F2A	; HeroDogFrame: bank of the frame being tested (high byte)
 
 ; ---------------------------------------------------------------------------
 ; Hooks in native code
@@ -118,13 +119,14 @@ org $F0072D			; was LDA $EC / BNE / LDA $0F42 / STA $02 / RTS (10 bytes)
 	RTS
 	NOP #5
 
-; --- Object think prolog ($CFCC1E, runs for every object, also during scripts): while a script plays a
-;     Dog animation on the hero (e.g. sleeping at an inn), the hero shows the Boy's current frame instead. ---
+; --- Object think prolog ($CFCC1E, runs for every object, also during scripts and while the Dog slot is
+;     halted): while a Dog animation would play on the hero (script, e.g. sleeping at an inn, or the walk-in
+;     after a map change), the hero shows the Boy's current frame instead; the hero palette is kept. ---
 org $CFCC1E			; was LDA $0010,Y / STA $0EB6
 	JSL HeroScriptPose
 	NOP #2
 
-; --- Animation engine, frame opcode $2n ($908418): when a script frame for the Dog slot would be stored,
+; --- Animation engine, frame opcode $2n ($908418): when a Dog frame for the hero would be stored,
 ;     store the Boy's current frame instead (same conditions as HeroScriptPose; avoids one-frame flashes). ---
 org $908421			; was LDA [$5D] / STA $0006,Y (5 bytes)
 	JSL HeroFrameSet
@@ -593,23 +595,24 @@ HeroUnfreezeActor:
 
 ; $F00965: buttons for dialogues. Hero mode ($0AA0 = 8): controller 1 ($F6) OR newly pressed buttons of
 ; controller 2; the dialogue buttons are consumed in $FA. Returns via the RTS at $F00961.
-; $CFCC1E: Y = object. In hero mode, while a script runs the Dog slot (+$10 bit $40) and its current frame
-; is not one of the Boy's frames (bank $CA), only the current frame (+$06..+$08) is taken from the Boy and the
-; Dog's own script keeps running (HeroFrameSet keeps its frames off the screen). The Boy's script state is not
-; copied (copying it broke the sprites when waking up). Then the replaced instructions.
+; $CFCC1E: Y = object. In hero mode the Dog slot shows the Boy's current frame (+$06..+$08) instead of
+;  a) while a script runs the Dog slot (+$10 bit $40): any frame that is not one of the Boy's (bank $CA),
+;     e.g. the Dog's sleeping pose at an inn; the Dog's own script keeps running, its state is not copied
+;     (copying the Boy's script state broke the sprites when waking up);
+;  b) otherwise: Dog frames (bank $CB) while the hero is alive, e.g. the walk-in after a map change, where
+;     the Dog slot is halted, the think routine (HeroSync) does not run, and the map loader has restored the
+;     Dog's animations and palette.
+; The hero palette is kept here too (HeroPalKeep), because HeroSync does not run while the slot is halted.
+; Then the replaced instructions.
 HeroScriptPose:
 	CPY #$4F37
 	BNE .orig
 	LDA.l $7E0AA0
 	CMP #$0008
 	BNE .orig
-	LDA.l $7E4F47
-	AND #$0040
-	BEQ .orig
-	LDA.l $7E4F3E		; +$07/+$08: address high byte and bank
-	AND #$FF00
-	CMP #$CA00
-	BEQ .orig
+	JSR HeroPalKeep
+	JSR HeroDogFrame
+	BCC .orig
 	LDA.l $7E4E8F		; Boy +$06/+$07
 	STA.l $7E4F3D
 	SEP #$20
@@ -621,6 +624,71 @@ HeroScriptPose:
 	STA $0EB6
 	RTL
 
+; C=1 if the Dog slot's frame (A = +$07/+$08, bank in the high byte) must be replaced by the Boy's frame:
+; script running (+$10 bit $40) and bank <> $CA, or no script, hero alive, and bank = $CB. Uses $7E4F3E
+; when called with A = 0 (prolog), otherwise A from the caller. A is destroyed.
+HeroDogFrameA:
+	AND #$FF00
+	STA.l !TMP_FRM
+	BRA HeroDogFrame_test
+HeroDogFrame:
+	LDA.l $7E4F3E		; +$07/+$08: address high byte and bank
+	AND #$FF00
+	STA.l !TMP_FRM
+HeroDogFrame_test:
+	LDA.l $7E4F47
+	AND #$0040
+	BEQ .noScript
+	LDA.l !TMP_FRM
+	CMP #$CA00
+	BEQ .no
+	SEC
+	RTS
+.noScript:
+	LDA.l $7E4F61		; KO: HeroDeadPose handles the hero's pose
+	BEQ .no
+	LDA.l !TMP_FRM
+	CMP #$CB00
+	BNE .no
+	SEC
+	RTS
+.no:
+	CLC
+	RTS
+
+; Keep the hero palette while hero mode is active (same conditions as HeroSync: P2 controls the Dog slot,
+; not switched to the Dog, Boy present). Preserves all registers, P, DB, and D.
+HeroPalKeep:
+	PHP
+	REP #$30
+	PHA
+	PHX
+	PHY
+	PHB
+	PHD
+	PEA $7E7E
+	PLB
+	PLB
+	PEA $0000
+	PLD
+	LDA.w $00F2
+	AND #$0008
+	BEQ .skip
+	LDA.l !P2DOG
+	BNE .skip
+	LDA $2261
+	AND #$0002
+	BNE .skip
+	JSR HeroPalette
+.skip:
+	PLD
+	PLB
+	PLY
+	PLX
+	PLA
+	PLP
+	RTS
+
 ; $908421: Y = object, +$08 already holds the new frame's bank, [$5D] = new frame. 16-bit A/X.
 HeroFrameSet:
 	CPY #$4F37
@@ -628,13 +696,9 @@ HeroFrameSet:
 	LDA.l $7E0AA0
 	CMP #$0008
 	BNE .native
-	LDA $0010,y
-	AND #$0040
-	BEQ .native
 	LDA $0007,y		; +$08 (high byte): bank of the new frame
-	AND #$FF00
-	CMP #$CA00
-	BEQ .native
+	JSR HeroDogFrameA
+	BCC .native
 	LDA.l $7E4E8F		; Boy's current frame instead
 	STA $0006,y
 	SEP #$20
